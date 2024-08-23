@@ -1,15 +1,14 @@
 library(shiny)
 library(bslib)
 library(fontawesome)
+library(readr)
+library(here)
+library(dplyr)
 
 # List of sentences to be typed
-sentences <- c(
-  "The quick brown fox jumps over the lazy dog.",
-  "Pack my box with five dozen liquor jugs.",
-  "How vexingly quick daft zebras jump!",
-  "Sphinx of black quartz, judge my vow.",
-  "Two driven jocks help fax my big quiz."
-)
+sentences <-
+  read_csv(here("data", "sentences.csv")) |> 
+  pull(sentence)
 
 ui <- page_fluid(
   tags$head(
