@@ -51,6 +51,8 @@ ui <- page_fluid(
         cursor: pointer;
         transition: transform 0.3s;
         outline: none;
+        padding: 5px;
+        border-radius: 50%;
       }
       #reloadButton:hover {
         transform: translateX(-50%) scale(1.1);
@@ -62,10 +64,15 @@ ui <- page_fluid(
       #reloadButton:hover svg {
         fill: #D1E0EF;
       }
+      #reloadButton:focus {
+        box-shadow: 0 0 0 2px #D1E0EF;
+      }
       #githubLink {
         position: absolute;
         top: 10px;
         right: 10px;
+        padding: 5px;
+        border-radius: 50%;
       }
       #githubLink svg {
         fill: #657281;
@@ -73,6 +80,10 @@ ui <- page_fluid(
       }
       #githubLink:hover svg {
         fill: #D1E0EF;
+      }
+      #githubLink:focus {
+        box-shadow: 0 0 0 2px #D1E0EF;
+        outline: none;
       }
     "))
   ),
