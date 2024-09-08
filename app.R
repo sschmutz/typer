@@ -1,172 +1,145 @@
 library(shiny)
 library(bslib)
-library(fontawesome)
 library(readr)
 library(here)
 library(dplyr)
 
-# List of sentences to be typed
+# Read sentences from CSV file
 sentences <-
   read_csv(here("data", "sentences.csv")) |> 
   pull(sentence)
 
+# Randomly choose one sentence
+sentence <- sample(sentences, 1)
+
 ui <- page_fluid(
+  theme = bs_theme(bg = "#1E2A38", fg = "#FFFFFF"),
   tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css")
+    tags$link(href = "https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap", rel = "stylesheet"),
+    tags$style(HTML("
+      body {
+        font-family: 'Source Sans Pro', sans-serif;
+      }
+      #sentence {
+        font-size: 24px;
+        letter-spacing: 0.5px;
+        line-height: 1.5;
+        text-align: justify;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 80%;
+        max-width: 800px;
+      }
+      .default {
+        color: #657281;
+      }
+      .correct {
+        color: #D1E0EF;
+      }
+      .incorrect {
+        color: #EE6431;
+      }
+      #reloadButton {
+        position: absolute;
+        top: 60%;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+        transition: transform 0.3s;
+        outline: none;
+      }
+      #reloadButton:hover {
+        transform: translateX(-50%) scale(1.1);
+      }
+      #reloadButton svg {
+        fill: #657281;
+        transition: fill 0.3s;
+      }
+      #reloadButton:hover svg {
+        fill: #D1E0EF;
+      }
+    "))
   ),
-  div(id = "typing-area",
-    div(style = "height: 100px;"),
-    uiOutput("target_text"),
-    uiOutput("interactive_text")
-  )
+  tags$div(id = "sentence"),
+  tags$button(
+    id = "reloadButton",
+    title = "Reload Sentence",
+    HTML('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>')
+  ),
+  tags$script(HTML("
+    let sentences = [];
+    let sentence = '';
+    let currentIndex = 0;
+
+    function getRandomSentence() {
+      return sentences[Math.floor(Math.random() * sentences.length)];
+    }
+
+    function initializeSentence() {
+      const sentenceElement = document.getElementById('sentence');
+      sentenceElement.innerHTML = '';
+      sentence.split('').forEach(char => {
+        const span = document.createElement('span');
+        span.textContent = char;
+        span.className = 'default';
+        sentenceElement.appendChild(span);
+      });
+      currentIndex = 0;
+    }
+
+    function reloadSentence() {
+      sentence = getRandomSentence();
+      initializeSentence();
+    }
+
+    document.addEventListener('keydown', function(event) {
+      const spans = document.querySelectorAll('#sentence span');
+      
+      if (event.key === 'Backspace' && currentIndex > 0) {
+        currentIndex--;
+        spans[currentIndex].className = 'default';
+      } else if (currentIndex < sentence.length) {
+        const char = sentence[currentIndex].toLowerCase();
+        
+        if (event.key.toLowerCase() === char) {
+          spans[currentIndex].className = 'correct';
+          currentIndex++;
+        } else if (event.key.length === 1) {
+          spans[currentIndex].className = 'incorrect';
+          currentIndex++;
+        }
+      }
+
+      // Prevent default behavior for space key
+      if (event.key === ' ') {
+        event.preventDefault();
+      }
+    });
+
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) {
+        reloadSentence();
+      }
+    });
+
+    document.getElementById('reloadButton').addEventListener('click', reloadSentence);
+
+    Shiny.addCustomMessageHandler('initializeSentence', function(data) {
+      sentences = data.sentences;
+      sentence = getRandomSentence();
+      initializeSentence();
+    });
+  "))
 )
 
 server <- function(input, output, session) {
-  # Use reactiveVal for the target sentence
-  target <- reactiveVal(sample(sentences, 1))
-  
-  output$target_text <- renderUI({
-    tags$p(id = "target-text", 
-           style = "font-size: 18px; font-family: monospace; margin-bottom: 20px; font-weight: normal;",
-           target())
+  observe({
+    session$sendCustomMessage("initializeSentence", list(sentences = sentences))
   })
-  
-  output$interactive_text <- renderUI({
-    tagList(
-      tags$div(
-        id = "text-wrapper",
-        tags$div(
-          id = "highlighted-text",
-          HTML(highlight_errors("", target()))
-        ),
-        tags$textarea(
-          id = "interactive-text",
-          oninput = "this.parentNode.querySelector('#highlighted-text').innerHTML = highlightErrors(this.value);
-                     this.style.height = 'auto';
-                     this.style.height = this.scrollHeight + 'px';
-                     updateCursorPosition(this);",
-          rows = 1,
-          autocomplete = "off",
-          spellcheck = "false"
-        )
-      ),
-      tags$script(HTML(sprintf(
-        "function highlightErrors(typed) {
-          const target = '%s';
-          const typedWords = typed.split(/\\s+/);
-          const targetWords = target.split(/\\s+/);
-          
-          let result = '';
-          
-          for (let i = 0; i < typedWords.length; i++) {
-            const typedWord = typedWords[i];
-            const targetWord = i < targetWords.length ? targetWords[i] : '';
-            
-            for (let j = 0; j < typedWord.length; j++) {
-              if (j < targetWord.length) {
-                if (typedWord[j] !== targetWord[j]) {
-                  result += '<span class=\"error\">' + typedWord[j] + '</span>';
-                } else {
-                  result += typedWord[j];
-                }
-              } else {
-                result += '<span class=\"error\">' + typedWord[j] + '</span>';
-              }
-            }
-            
-            if (i < typedWords.length - 1) {
-              result += ' ';
-            }
-          }
-          
-          return result;
-        }
-
-        function updateCursorPosition(textarea) {
-          const wrapper = textarea.parentNode;
-          const cursorPosition = textarea.selectionStart;
-          const text = textarea.value.substring(0, cursorPosition);
-          const textWidth = getTextWidth(text, getComputedStyle(textarea).font);
-          wrapper.style.setProperty('--cursor-left', `${textWidth - 3}px`);
-        }
-
-        function getTextWidth(text, font) {
-          const canvas = getTextWidth.canvas || (getTextWidth.canvas = document.createElement('canvas'));
-          const context = canvas.getContext('2d');
-          context.font = font;
-          return context.measureText(text).width;
-        }
-
-        function focusTextarea() {
-          const textarea = document.getElementById('interactive-text');
-          textarea.focus();
-          updateCursorPosition(textarea);
-        }
-
-        document.addEventListener('DOMContentLoaded', focusTextarea);
-        document.addEventListener('click', focusTextarea);
-        document.addEventListener('keydown', function(event) {
-          if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key.length === 1) {
-            focusTextarea();
-          }
-        });
-
-        const textWrapper = document.getElementById('text-wrapper');
-        const interactiveText = document.getElementById('interactive-text');
-
-        interactiveText.addEventListener('focus', function() {
-          textWrapper.classList.add('focused');
-          setTimeout(updateCursorPosition, 0, this);
-        });
-
-        interactiveText.addEventListener('blur', function() {
-          textWrapper.classList.remove('focused');
-        });
-
-        // Prevent linebreaks
-        interactiveText.addEventListener('keydown', function(event) {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-          }
-        });
-      ", target()
-      )))
-    )
-  })
-}
-
-highlight_errors <- function(typed, target) {
-  typed_words <- strsplit(typed, "\\s+")[[1]]
-  target_words <- strsplit(target, "\\s+")[[1]]
-  
-  result <- character(0)
-  
-  for (i in seq_along(typed_words)) {
-    typed_word <- typed_words[i]
-    target_word <- if (i <= length(target_words)) target_words[i] else ""
-    
-    word_result <- character(nchar(typed_word))
-    
-    for (j in 1:nchar(typed_word)) {
-      if (j <= nchar(target_word)) {
-        if (substr(typed_word, j, j) != substr(target_word, j, j)) {
-          word_result[j] <- sprintf('<span class="error">%s</span>', substr(typed_word, j, j))
-        } else {
-          word_result[j] <- substr(typed_word, j, j)
-        }
-      } else {
-        word_result[j] <- sprintf('<span class="error">%s</span>', substr(typed_word, j, j))
-      }
-    }
-    
-    result <- c(result, paste(word_result, collapse = ""))
-    
-    if (i < length(typed_words)) {
-      result <- c(result, " ")
-    }
-  }
-  
-  paste(result, collapse = "")
 }
 
 shinyApp(ui, server)
