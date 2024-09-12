@@ -4,19 +4,20 @@ library(readr)
 library(here)
 library(dplyr)
 
-# Read sentences from CSV file
-sentences <-
-  read_csv(here("data", "sentences.csv")) |> 
-  pull(sentence)
-
-# Randomly choose one sentence
-sentence <- sample(sentences, 1)
+# Read default sentences from CSV file
+default_sentences <- read_csv(here("data", "sentences.csv")) |> pull(sentence)
 
 ui <- page_fluid(
   theme = bs_theme(bg = "#1E2A38", fg = "#FFFFFF"),
   tags$head(
     tags$link(href = "https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap", rel = "stylesheet"),
     tags$style(HTML("
+      html, body { 
+        height: 100%; 
+        width: 100%; 
+        margin: 0; 
+        padding: 0; 
+      }
       body {
         font-family: 'Source Sans Pro', sans-serif;
       }
@@ -85,8 +86,18 @@ ui <- page_fluid(
         box-shadow: 0 0 0 2px #D1E0EF;
         outline: none;
       }
+      #file_upload_container {
+        height: 0;
+        width: 0;
+        overflow: hidden;
+      }
     "))
   ),
+  # Hidden file input
+  div(id = "file_upload_container",
+      fileInput("file", NULL, accept = ".csv")
+  ),
+  
   tags$div(id = "sentence"),
   tags$button(
     id = "reloadButton",
@@ -144,7 +155,6 @@ ui <- page_fluid(
         }
       }
 
-      // Prevent default behavior for space key
       if (event.key === ' ') {
         event.preventDefault();
       }
@@ -163,12 +173,50 @@ ui <- page_fluid(
       sentence = getRandomSentence();
       initializeSentence();
     });
+
+    // Full-window drag and drop functionality
+    var fileInput = document.querySelector('input[type=file]');
+
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function handleDrop(e) {
+      let dt = e.dataTransfer;
+      let files = dt.files;
+      if (files.length) {
+        fileInput.files = files;
+        $(fileInput).change();
+      }
+    }
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      window.addEventListener(eventName, preventDefaults, false);
+      document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    window.addEventListener('drop', handleDrop, false);
+    document.body.addEventListener('drop', handleDrop, false);
   "))
 )
 
 server <- function(input, output, session) {
+  sentences <- reactiveVal(default_sentences)
+  
   observe({
-    session$sendCustomMessage("initializeSentence", list(sentences = sentences))
+    session$sendCustomMessage("initializeSentence", list(sentences = sentences()))
+  })
+  
+  observeEvent(input$file, {
+    req(input$file)
+    tryCatch({
+      new_sentences <- read_csv(input$file$datapath) |> pull(sentence)
+      sentences(new_sentences)
+      session$sendCustomMessage("initializeSentence", list(sentences = sentences()))
+    }, error = function(e) {
+      showNotification("Error reading CSV file. Please ensure it has a 'sentence' column.", type = "error")
+    })
   })
 }
 
